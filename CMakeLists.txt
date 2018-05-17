@@ -19,7 +19,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall ${CMAKE_CXX_FLAGS}")
+#SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall ${CMAKE_CXX_FLAGS}")
 
 add_executable(${PROJECT_NAME}_node src/cascaded_ground_seg.cpp)
 
@@ -27,4 +27,3 @@ target_link_libraries(${PROJECT_NAME}_node
    ${catkin_LIBRARIES}
    ${PCL_LIBRARIES}
 )
-
