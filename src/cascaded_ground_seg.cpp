@@ -15,7 +15,11 @@
 // #include <opencv/cv.h>
 #include <vector>
 #include <pcl/filters/extract_indices.h>
+
 #include <iostream>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/segmentation/sac_segmentation.h>
 
 class CascasedGroundSeg
 {
@@ -320,45 +324,49 @@ void CascasedGroundSeg::SegmentGround(const pcl::PointCloud<velodyne_pointcloud:
     ColumnSegment(i, in_cloud_msg, v_ring, g_ring);
   }
 
-	///////////////////////////////////////////
-	/////////// Multi-region filter ///////////
-	///////////////////////////////////////////
-	// // Declare vectors to points index (V_multi, G_multi)
-	// std::vector<int> v_multi;
-	// std::vector<int> g_multi;
-
-	// Clear region_index
-	// Fill region_index
-
-	// For each quadrant (Loop using Region Map index)
-		// QuadPlaneFit (V_plane, G_plane)
-
-			// QuadPlaneFit: ()
-				//
-
-
-	///////////////////////////////////////////
-	/////////// Merge outputs /////////////////
-	///////////////////////////////////////////
-
-	// v_indices = V_ring + V_plane
-	// g_indices = G_ring + G_plane
-
-	// PCL indices extract
+	// Convert velodyne_pointcloud to pcl_pointcloud
 	pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_in_cloud (new pcl::PointCloud<pcl::PointXYZI>);
 	pcl::copyPointCloud(*in_cloud_msg, *pcl_in_cloud);
 
+	// Get the remaining ground points
+	pcl::PointCloud<pcl::PointXYZI>::Ptr remaining_ground (new pcl::PointCloud<pcl::PointXYZI>);
 	pcl::PointIndices::Ptr ground_indices (new pcl::PointIndices);
 	ground_indices->indices = v_ring;
-
 	pcl::ExtractIndices<pcl::PointXYZI> extract;
   extract.setInputCloud (pcl_in_cloud);
   extract.setIndices (ground_indices);
+  extract.setNegative (true);
+  extract.filter (*remaining_ground);
   extract.setNegative (false);
   extract.filter (out_groundless_points);
-  extract.setNegative (true);
-  extract.filter (out_ground_points);
 
+	///////////////////////////////////////////
+	/////////// Plane fitting filter //////////
+	///////////////////////////////////////////
+	pcl::PointCloud<pcl::PointXYZI>::Ptr remaining_vertical (new pcl::PointCloud<pcl::PointXYZI>);
+	pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
+  pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+	// Create the segmentation object
+  pcl::SACSegmentation<pcl::PointXYZI> seg;
+  // Optional
+  seg.setOptimizeCoefficients (true);
+  // Mandatory
+  seg.setModelType (pcl::SACMODEL_PLANE);
+  seg.setMethodType (pcl::SAC_RANSAC);
+  seg.setMaxIterations (50);
+  seg.setDistanceThreshold (0.3);
+	// Perform segmentation
+	seg.setInputCloud (remaining_ground);
+  seg.segment (*inliers, *coefficients);
+	// Extract the segmented points
+  extract.setInputCloud (remaining_ground);
+  extract.setIndices (inliers);
+  extract.setNegative (false);
+  extract.filter(out_ground_points);
+  extract.setNegative (true);
+  extract.filter(*remaining_vertical);
+
+	out_groundless_points += *remaining_vertical;
 }
 
 void CascasedGroundSeg::VelodyneCallback(const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg)
