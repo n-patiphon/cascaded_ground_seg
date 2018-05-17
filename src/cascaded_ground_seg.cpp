@@ -70,7 +70,7 @@ private:
 	void InitIndexMap();
 	void FillIndexMap(const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg);
 	double EstimatedRad(int index_tar, int index_ref);
-	void ColumnSegment(int i, const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg, std::vector<int> &v_ring, std::vector<int> &g_ring);
+	void ColumnSegment(int i, const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg, std::vector<int> &v_ring);
 	void SegmentGround(const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg,
 				pcl::PointCloud<pcl::PointXYZI> &out_groundless_points,
 				pcl::PointCloud<pcl::PointXYZI> &out_ground_points);
@@ -239,7 +239,7 @@ double CascasedGroundSeg::EstimatedRad(int index_tar, int index_ref)
 	return r;
 }
 
-void CascasedGroundSeg::ColumnSegment(int i, const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg, std::vector<int> &v_ring, std::vector<int> &g_ring)
+void CascasedGroundSeg::ColumnSegment(int i, const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg, std::vector<int> &v_ring)
 {
 	int index_ref = -1;
 	double r_ref;
@@ -312,7 +312,6 @@ void CascasedGroundSeg::SegmentGround(const pcl::PointCloud<velodyne_pointcloud:
 	///////////////////////////////////////////
 	// Declare vectors to store points index (V_ring, G_ring)
 	std::vector<int> v_ring;
-	std::vector<int> g_ring;
 	// Clear index_map_
 	InitIndexMap();
 	// Fill index_map_
@@ -321,7 +320,7 @@ void CascasedGroundSeg::SegmentGround(const pcl::PointCloud<velodyne_pointcloud:
 	for (int i = 0; i < horizontal_res_; i++)
 	{
 		// Segment each column of the index_map separately
-    ColumnSegment(i, in_cloud_msg, v_ring, g_ring);
+    ColumnSegment(i, in_cloud_msg, v_ring);
   }
 
 	// Convert velodyne_pointcloud to pcl_pointcloud
