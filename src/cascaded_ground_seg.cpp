@@ -337,10 +337,13 @@ void CascasedGroundSeg::SegmentGround(const pcl::PointCloud<velodyne_pointcloud:
   extract.setIndices (ground_indices);
   extract.setNegative (true);
   extract.filter (*remaining_ground);
+  extract.setNegative (false);
+  extract.filter (out_groundless_points);
 
 	///////////////////////////////////////////
 	/////////// Plane fitting filter //////////
 	///////////////////////////////////////////
+	pcl::PointCloud<pcl::PointXYZI>::Ptr remaining_vertical (new pcl::PointCloud<pcl::PointXYZI>);
 	pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
   pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
 	// Create the segmentation object
@@ -359,10 +362,11 @@ void CascasedGroundSeg::SegmentGround(const pcl::PointCloud<velodyne_pointcloud:
   extract.setInputCloud (remaining_ground);
   extract.setIndices (inliers);
   extract.setNegative (false);
-  extract.filter (out_ground_points);
+  extract.filter(out_ground_points);
   extract.setNegative (true);
-  extract.filter (out_groundless_points);
+  extract.filter(*remaining_vertical);
 
+	out_groundless_points += *remaining_vertical;
 }
 
 void CascasedGroundSeg::VelodyneCallback(const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg)
