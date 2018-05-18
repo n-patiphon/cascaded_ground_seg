@@ -57,7 +57,8 @@ private:
 	double	radius_table_[64];
 	// cv::Mat 	index_map_;
 	int **index_map_;
-	int **region_index;
+	std::vector<int> **region_index_;
+	std::vector<double> section_bounds_;
 
 	boost::chrono::high_resolution_clock::time_point t1_;
 	boost::chrono::high_resolution_clock::time_point t2_;
@@ -65,12 +66,16 @@ private:
 
 	const int 	DEFAULT_HOR_RES = 2000;
 
+	void GetSectionBounds();
 	double RadiusCal(double theta, double alpha, double beta);
 	void InitRadiusTable(int in_model);
 	void InitIndexMap();
 	void FillIndexMap(const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg);
 	double EstimatedRad(int index_tar, int index_ref);
 	void ColumnSegment(int i, const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg, std::vector<int> &v_ring);
+	void InitRegionIndex();
+	int GetSection(double r);
+	void FillRegionIndex(pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_ground_cloud);
 	void SegmentGround(const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg,
 				pcl::PointCloud<pcl::PointXYZI> &out_groundless_points,
 				pcl::PointCloud<pcl::PointXYZI> &out_ground_points);
@@ -110,9 +115,13 @@ CascasedGroundSeg::CascasedGroundSeg() : node_handle_("~")
 	node_handle_.param("plane_ang_thres", plane_ang_thres_, 0.08);
 	ROS_INFO("Angular differnce threshold: %f", plane_ang_thres_);
 
-	InitRadiusTable(sensor_model_);
-
 	vertical_res_ = sensor_model_;
+
+	// Calculate expected radius for each laser
+	InitRadiusTable(sensor_model_);
+	// Calculate section bounds
+	GetSectionBounds();
+
 	switch(sensor_model_)
 	{
 		case 64:
@@ -137,10 +146,10 @@ CascasedGroundSeg::CascasedGroundSeg() : node_handle_("~")
   }
 
 	// Create region index
-	region_index = new int *[4];
+	region_index_ = new std::vector<int> *[4];
   for (int i = 0; i < 4; i++)
   {
-    region_index[i] = new int[n_section_];
+    region_index_[i] = new std::vector<int> [n_section_];
   }
 
 	points_node_sub_ = node_handle_.subscribe(point_topic_, 10000, &CascasedGroundSeg::VelodyneCallback, this);
@@ -151,7 +160,6 @@ CascasedGroundSeg::CascasedGroundSeg() : node_handle_("~")
 
 void CascasedGroundSeg::InitIndexMap()
 {
-
   for (int i = 0; i < vertical_res_; i++)
   {
     for (int j = 0; j < horizontal_res_; j++)
@@ -173,6 +181,70 @@ void CascasedGroundSeg::FillIndexMap(const pcl::PointCloud<velodyne_pointcloud::
 		index_map_[row][column] = i;
 	}
 
+}
+
+void CascasedGroundSeg::GetSectionBounds()
+{
+	// Calculate lasers id which define section boundaries
+	int boundary_indices[n_section_];
+	int section_width = int(ceil(1.0 * vertical_res_ / n_section_));
+	for (int i = 0; i < n_section_; i++)
+	{
+		int new_ind = vertical_res_ - section_width * (i + 1);
+		if (new_ind < 0)
+		{
+			boundary_indices[i] = 0;
+		} else {
+			boundary_indices[i] = new_ind;
+		}
+	}
+
+	// Set up geometric parameters according to the sensor model
+	double step = 0;
+	double initial_angle = 0;
+	switch (sensor_model_)
+	{
+		case 64:
+			step = 1.0/3.0;
+			initial_angle = -2.0;
+			break;
+		case 32:
+			step = 4.0/3.0;
+			initial_angle = -31.0/3.0;
+			break;
+		case 16:
+			step = 2.0;
+			initial_angle = -15.0;
+			break;
+		default:
+			step = 1.0/3.0;
+			initial_angle = -2.0;
+			break;
+	}
+
+	section_bounds_.clear();
+	int boundary_ind = n_section_ - 1;
+	for (int i = 0; i < sensor_model_; i++)
+	{
+		if (i == boundary_indices[boundary_ind])
+		{
+			double theta = (i*step + initial_angle)/180*M_PI;
+			if (theta != 0)
+			{
+				section_bounds_.insert(section_bounds_.begin(), sensor_height_ / tan(theta));
+			} else {
+				ROS_INFO("Please adjust number of sections: (n_section)");
+				section_bounds_.insert(section_bounds_.begin(), sensor_height_ / tan(0.0001));
+			}
+			boundary_ind--;
+			if (boundary_ind < 0) break;
+		}
+		if ((sensor_model_ == 64) && (i == 31))
+		{
+			step = 0.5;
+			initial_angle = -15.0 + 8.83;
+		}
+	}
 }
 
 double CascasedGroundSeg::RadiusCal(double theta, double alpha, double beta)
@@ -221,7 +293,6 @@ void CascasedGroundSeg::InitRadiusTable(int in_model)
 			initial_angle = -15.0 + 8.83;
 			alpha = step/180*M_PI;
 			beta = max_slope_/180*M_PI;
-
 		} else {
 			radius_table_[i] = sensor_height_ * RadiusCal(theta, alpha, beta);
 		}
@@ -302,6 +373,63 @@ void CascasedGroundSeg::ColumnSegment(int i, const pcl::PointCloud<velodyne_poin
 
 }
 
+void CascasedGroundSeg::InitRegionIndex()
+{
+  for (int i = 0; i < 4; i++)
+  {
+    for (int j = 0; j < n_section_; j++)
+    {
+      region_index_[i][j].clear();
+    }
+  }
+}
+
+int CascasedGroundSeg::GetSection(double r)
+{
+	for (int i = 0; i < n_section_; i++)
+	{
+		if (r < section_bounds_[i])
+		{
+			return i;
+		}
+	}
+	return n_section_ - 1;
+}
+
+void CascasedGroundSeg::FillRegionIndex(pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_ground_cloud)
+{
+	for(size_t i = 0; i < remaining_ground_cloud->size(); i++)
+	{
+		double y = remaining_ground_cloud->points[i].y;
+		double x = remaining_ground_cloud->points[i].x;
+		double r = sqrt(y*y + x*x);
+		double u = atan2(y, x) * 180/M_PI;
+		if (u < 0) { u = 360 + u; }
+
+		if (u >= 315) {
+		// Quadrant 0
+			int s = GetSection(r);
+      region_index_[0][s].push_back(i);
+		} else if (u >= 225) {
+		// Quadrant 3
+			int s = GetSection(r);
+      region_index_[3][s].push_back(i);
+		} else if (u >= 135) {
+		// Quadrant 2
+			int s = GetSection(r);
+      region_index_[2][s].push_back(i);
+		} else if (u >= 45) {
+		// Quadrant 1
+			int s = GetSection(r);
+      region_index_[1][s].push_back(i);
+		} else {
+		// Quadrant 0
+			int s = GetSection(r);
+      region_index_[0][s].push_back(i);
+		}
+	}
+}
+
 void CascasedGroundSeg::SegmentGround(const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg,
 			pcl::PointCloud<pcl::PointXYZI> &out_groundless_points,
 			pcl::PointCloud<pcl::PointXYZI> &out_ground_points)
@@ -310,24 +438,22 @@ void CascasedGroundSeg::SegmentGround(const pcl::PointCloud<velodyne_pointcloud:
 	///////////////////////////////////////////
 	//////////// Inter-ring filter ////////////
 	///////////////////////////////////////////
-	// Declare vectors to store points index (V_ring, G_ring)
+	// Declare vectors to store vertical points index
 	std::vector<int> v_ring;
 	// Clear index_map_
 	InitIndexMap();
 	// Fill index_map_
 	FillIndexMap(in_cloud_msg);
-
+	// Loop over columns
 	for (int i = 0; i < horizontal_res_; i++)
 	{
 		// Segment each column of the index_map separately
     ColumnSegment(i, in_cloud_msg, v_ring);
   }
-
-	// Convert velodyne_pointcloud to pcl_pointcloud
+	// Convert velodyne_pointcloud to PCL PointCloud
 	pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_in_cloud (new pcl::PointCloud<pcl::PointXYZI>);
 	pcl::copyPointCloud(*in_cloud_msg, *pcl_in_cloud);
-
-	// Get the remaining ground points
+	// Extract vertical points and remaining ground points from the input cloud
 	pcl::PointCloud<pcl::PointXYZI>::Ptr remaining_ground (new pcl::PointCloud<pcl::PointXYZI>);
 	pcl::PointIndices::Ptr ground_indices (new pcl::PointIndices);
 	ground_indices->indices = v_ring;
@@ -339,9 +465,23 @@ void CascasedGroundSeg::SegmentGround(const pcl::PointCloud<velodyne_pointcloud:
   extract.setNegative (false);
   extract.filter (out_groundless_points);
 
-	///////////////////////////////////////////
-	/////////// Plane fitting filter //////////
-	///////////////////////////////////////////
+	///////////////////////////////////////////////
+	/////////// Quandrants plane fitting //////////
+	///////////////////////////////////////////////
+	// Clear region_index
+	InitRegionIndex();
+	// Fill region_index
+	FillRegionIndex(remaining_ground);
+	// for (int i = 0; i < 4; i++)
+	// {
+	// 	for (int j = 0; j < n_section_; j++)
+	// 	{
+	// 		std::cout << "Quandrant, Section" << i << ", " << j << '\n';
+	// 		std::cout << "Total points: " << region_index_[i][j].size() << "Points" << '\n';
+	// 	}
+	// }
+	// std::cout << "Totla point for remaining" << remaining_ground->points.size() << '\n';
+
 	pcl::PointCloud<pcl::PointXYZI>::Ptr remaining_vertical (new pcl::PointCloud<pcl::PointXYZI>);
 	pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
   pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
@@ -365,6 +505,9 @@ void CascasedGroundSeg::SegmentGround(const pcl::PointCloud<velodyne_pointcloud:
   extract.setNegative (true);
   extract.filter(*remaining_vertical);
 
+	//////////////////////////////////////////
+	////////////// Outputs merge /////////////
+	//////////////////////////////////////////
 	out_groundless_points += *remaining_vertical;
 }
 
