@@ -4,7 +4,6 @@ project(cascaded_ground_seg)
 find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   roscpp	
-  #pcl_ros
 )
 
 find_package(PCL 1.7 REQUIRED)
@@ -29,21 +28,3 @@ target_link_libraries(${PROJECT_NAME}_node
    ${catkin_LIBRARIES}
    ${PCL_LIBRARIES}
 )
-
-#(WORKS)
-
-#add_executable(example_graphcut "src/example_graphcut.cpp")
-#target_link_libraries(
-  #example_graphcut
-  ##${catkin_LIBRARIES}
-  #${PCL_LIBRARIES}
-#)
-
-#(SEGFAULT)
-
-#add_executable(example_graphcut "src/example_graphcut.cpp")
-#target_link_libraries(
-  #example_graphcut
-  #${catkin_LIBRARIES}
-  #${PCL_LIBRARIES}
-#)
