@@ -442,15 +442,12 @@ void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cl
 	// Temporary containers for plane segmentation results
 	pcl::PointCloud<pcl::PointXYZI>::Ptr tmp_ground (new pcl::PointCloud<pcl::PointXYZI>);
 	pcl::PointCloud<pcl::PointXYZI>::Ptr tmp_vertical (new pcl::PointCloud<pcl::PointXYZI>);
+
 	// Fitting a plane
 	pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
   pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
-
-	// Create the segmentation object
   pcl::SACSegmentation<pcl::PointXYZI> seg;
-  // Optional
   seg.setOptimizeCoefficients (true);
-  // Mandatory
   seg.setModelType (pcl::SACMODEL_PLANE);
   seg.setMethodType (pcl::SAC_RANSAC);
   seg.setMaxIterations (50);
@@ -459,18 +456,18 @@ void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cl
 	seg.setInputCloud (region_cloud);
   seg.segment (*inliers, *coefficients);
 
- 	ROS_INFO("Size: %d", inliers->indices.size());
-	// Extract the segmented points
-	pcl::ExtractIndices<pcl::PointXYZI> extract;
-  extract.setInputCloud (region_cloud);
-  extract.setIndices (inliers);
-	// if ((inliers->indices.size()) > 0 && (inliers->indices.size() < region_cloud->points.size()))
+ 	// ROS_INFO("Size: %d", inliers->indices.size());
+
 	if (inliers->indices.size() == region_cloud->points.size())
 	{
 		// In this condition, every point is ground
 		out_ground_points += *region_cloud;
 	} else if (inliers->indices.size() > 0) {
 		// This is general condition. Some are ground, some are not
+		// Extract the segmented points
+		pcl::ExtractIndices<pcl::PointXYZI> extract;
+	  extract.setInputCloud (region_cloud);
+	  extract.setIndices (inliers);
 	  extract.setNegative (false);
 	  extract.filter(*tmp_ground);
 	  extract.setNegative (true);
@@ -498,14 +495,16 @@ void CascasedGroundSeg::SectionPlaneSegment(int i, pcl::PointCloud<pcl::PointXYZ
 	  extract_region_cloud.filter(*region_cloud);
 
 		// Segment ground points in a region
-		ROS_INFO("Before one plane, size: %d", region_cloud->points.size());
+		// ROS_INFO("Before one plane, size: %d", region_cloud->points.size());
+		// The cloud has to contain more than 3 points to be able to used for plane estimation
 		if (region_cloud->points.size() > 3)
 		{
 			PlaneSeg(region_cloud, out_ground_points, remaining_vertical);
+		} else {
+			// segment using coefficients of the estimated plane from previous section
 		}
-		ROS_INFO("After one plane");
+		// ROS_INFO("After one plane");
 	}
-
 }
 
 void CascasedGroundSeg::SegmentGround(const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg,
