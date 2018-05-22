@@ -457,15 +457,20 @@ void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cl
   seg.setDistanceThreshold (plane_dis_thres_);
 	// Perform segmentation
 	seg.setInputCloud (region_cloud);
-  seg.segment (*inliers, *coefficients); //Bug
+  seg.segment (*inliers, *coefficients);
 
  	ROS_INFO("Size: %d", inliers->indices.size());
 	// Extract the segmented points
 	pcl::ExtractIndices<pcl::PointXYZI> extract;
   extract.setInputCloud (region_cloud);
   extract.setIndices (inliers);
-	if (inliers->indices.size() < region_cloud->points.size())
+	// if ((inliers->indices.size()) > 0 && (inliers->indices.size() < region_cloud->points.size()))
+	if (inliers->indices.size() == region_cloud->points.size())
 	{
+		// In this condition, every point is ground
+		out_ground_points += *region_cloud;
+	} else if (inliers->indices.size() > 0) {
+		// This is general condition. Some are ground, some are not
 	  extract.setNegative (false);
 	  extract.filter(*tmp_ground);
 	  extract.setNegative (true);
@@ -473,8 +478,9 @@ void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cl
 		// Merge outputs
 		out_ground_points += *tmp_ground;
 		*remaining_vertical += *tmp_vertical;
+	} else {
+		// This condition is when the plane cannot be estimated, use the plane from previous section instead
 	}
-
 }
 
 void CascasedGroundSeg::SectionPlaneSegment(int i, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_ground, pcl::PointCloud<pcl::PointXYZI> &out_ground_points, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_vertical)
@@ -553,43 +559,6 @@ void CascasedGroundSeg::SegmentGround(const pcl::PointCloud<velodyne_pointcloud:
 		SectionPlaneSegment(i, remaining_ground, out_ground_points, remaining_vertical);
 	}
 
-	// //////////////////////////////////////////
-	// ////////////// Outputs merge /////////////
-	// //////////////////////////////////////////
-	// pcl::PointCloud<pcl::PointXYZI>::Ptr tmp_ground (new pcl::PointCloud<pcl::PointXYZI>);
-	// pcl::PointCloud<pcl::PointXYZI>::Ptr tmp_vertical (new pcl::PointCloud<pcl::PointXYZI>);
-	// // Fitting a plane
-	// pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
-  // pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
-  //
-	// // Create the segmentation object
-  // pcl::SACSegmentation<pcl::PointXYZI> seg;
-  // // Optional
-  // seg.setOptimizeCoefficients (true);
-  // // Mandatory
-  // seg.setModelType (pcl::SACMODEL_PLANE);
-  // seg.setMethodType (pcl::SAC_RANSAC);
-  // seg.setMaxIterations (50);
-  // // seg.setDistanceThreshold (plane_dis_thres_);
-  // seg.setDistanceThreshold (0.3);
-	// // Perform segmentation
-	// seg.setInputCloud (remaining_ground);
-	// // seg.setInputCloud (region_cloud);
-  // seg.segment (*inliers, *coefficients); //Bug
-  //
-	// // Extract the segmented points
-	// pcl::ExtractIndices<pcl::PointXYZI> extract;
-  // extract.setInputCloud (remaining_ground);
-  // // extract.setInputCloud (region_cloud);
-  // extract.setIndices (inliers);
-  // extract.setNegative (false);
-  // extract.filter(*tmp_ground);
-  // extract.setNegative (true);
-  // extract.filter(*tmp_vertical);
-
-	// // Merge outputs
-	// *remaining_vertical += *tmp_vertical;
-	// out_ground_points += *tmp_ground;
 	//////////////////////////////////////////
 	////////////// Outputs merge /////////////
 	//////////////////////////////////////////
