@@ -459,18 +459,22 @@ void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cl
 	seg.setInputCloud (region_cloud);
   seg.segment (*inliers, *coefficients); //Bug
 
+ 	ROS_INFO("Size: %d", inliers->indices.size());
 	// Extract the segmented points
 	pcl::ExtractIndices<pcl::PointXYZI> extract;
   extract.setInputCloud (region_cloud);
   extract.setIndices (inliers);
-  extract.setNegative (false);
-  extract.filter(*tmp_ground);
-  extract.setNegative (true);
-  extract.filter(*tmp_vertical);
+	if (inliers->indices.size() < region_cloud->points.size())
+	{
+	  extract.setNegative (false);
+	  extract.filter(*tmp_ground);
+	  extract.setNegative (true);
+	  extract.filter(*tmp_vertical);
+		// Merge outputs
+		out_ground_points += *tmp_ground;
+		*remaining_vertical += *tmp_vertical;
+	}
 
-	// Merge outputs
-	*remaining_vertical += *tmp_vertical;
-	out_ground_points += *tmp_ground;
 }
 
 void CascasedGroundSeg::SectionPlaneSegment(int i, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_ground, pcl::PointCloud<pcl::PointXYZI> &out_ground_points, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_vertical)
@@ -488,8 +492,8 @@ void CascasedGroundSeg::SectionPlaneSegment(int i, pcl::PointCloud<pcl::PointXYZ
 	  extract_region_cloud.filter(*region_cloud);
 
 		// Segment ground points in a region
-		// ROS_INFO("Before one plane, size: %d", region_cloud->points.size());
-		if (region_cloud->points.size() > 0)
+		ROS_INFO("Before one plane, size: %d", region_cloud->points.size());
+		if (region_cloud->points.size() > 3)
 		{
 			PlaneSeg(region_cloud, out_ground_points, remaining_vertical);
 		}
@@ -546,46 +550,46 @@ void CascasedGroundSeg::SegmentGround(const pcl::PointCloud<velodyne_pointcloud:
 	for (int i = 0; i < 4; i++)
 	{
 		// Segment each section separately
-		// SectionPlaneSegment(i, remaining_ground, out_ground_points, remaining_vertical);
+		SectionPlaneSegment(i, remaining_ground, out_ground_points, remaining_vertical);
 	}
 
-	//////////////////////////////////////////
-	////////////// Outputs merge /////////////
-	//////////////////////////////////////////
-	pcl::PointCloud<pcl::PointXYZI>::Ptr tmp_ground (new pcl::PointCloud<pcl::PointXYZI>);
-	pcl::PointCloud<pcl::PointXYZI>::Ptr tmp_vertical (new pcl::PointCloud<pcl::PointXYZI>);
-	// Fitting a plane
-	pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
-  pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+	// //////////////////////////////////////////
+	// ////////////// Outputs merge /////////////
+	// //////////////////////////////////////////
+	// pcl::PointCloud<pcl::PointXYZI>::Ptr tmp_ground (new pcl::PointCloud<pcl::PointXYZI>);
+	// pcl::PointCloud<pcl::PointXYZI>::Ptr tmp_vertical (new pcl::PointCloud<pcl::PointXYZI>);
+	// // Fitting a plane
+	// pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
+  // pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+  //
+	// // Create the segmentation object
+  // pcl::SACSegmentation<pcl::PointXYZI> seg;
+  // // Optional
+  // seg.setOptimizeCoefficients (true);
+  // // Mandatory
+  // seg.setModelType (pcl::SACMODEL_PLANE);
+  // seg.setMethodType (pcl::SAC_RANSAC);
+  // seg.setMaxIterations (50);
+  // // seg.setDistanceThreshold (plane_dis_thres_);
+  // seg.setDistanceThreshold (0.3);
+	// // Perform segmentation
+	// seg.setInputCloud (remaining_ground);
+	// // seg.setInputCloud (region_cloud);
+  // seg.segment (*inliers, *coefficients); //Bug
+  //
+	// // Extract the segmented points
+	// pcl::ExtractIndices<pcl::PointXYZI> extract;
+  // extract.setInputCloud (remaining_ground);
+  // // extract.setInputCloud (region_cloud);
+  // extract.setIndices (inliers);
+  // extract.setNegative (false);
+  // extract.filter(*tmp_ground);
+  // extract.setNegative (true);
+  // extract.filter(*tmp_vertical);
 
-	// Create the segmentation object
-  pcl::SACSegmentation<pcl::PointXYZI> seg;
-  // Optional
-  seg.setOptimizeCoefficients (true);
-  // Mandatory
-  seg.setModelType (pcl::SACMODEL_PLANE);
-  seg.setMethodType (pcl::SAC_RANSAC);
-  seg.setMaxIterations (50);
-  // seg.setDistanceThreshold (plane_dis_thres_);
-  seg.setDistanceThreshold (0.3);
-	// Perform segmentation
-	seg.setInputCloud (remaining_ground);
-	// seg.setInputCloud (region_cloud);
-  seg.segment (*inliers, *coefficients); //Bug
-
-	// Extract the segmented points
-	pcl::ExtractIndices<pcl::PointXYZI> extract;
-  extract.setInputCloud (remaining_ground);
-  // extract.setInputCloud (region_cloud);
-  extract.setIndices (inliers);
-  extract.setNegative (false);
-  extract.filter(*tmp_ground);
-  extract.setNegative (true);
-  extract.filter(*tmp_vertical);
-
-	// Merge outputs
-	*remaining_vertical += *tmp_vertical;
-	out_ground_points += *tmp_ground;
+	// // Merge outputs
+	// *remaining_vertical += *tmp_vertical;
+	// out_ground_points += *tmp_ground;
 	//////////////////////////////////////////
 	////////////// Outputs merge /////////////
 	//////////////////////////////////////////

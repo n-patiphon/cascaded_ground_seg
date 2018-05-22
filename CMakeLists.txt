@@ -7,7 +7,7 @@ find_package(catkin REQUIRED COMPONENTS
   #pcl_ros
 )
 
-find_package(PCL 1.8 REQUIRED)
+find_package(PCL 1.7 REQUIRED)
 include_directories(${PCL_INCLUDE_DIRS})
 link_libraries(${PCL_LIBRARIES})
 add_definitions(${PCL_DEFINITIONS})
