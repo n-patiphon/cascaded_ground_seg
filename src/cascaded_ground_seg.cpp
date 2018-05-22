@@ -461,6 +461,17 @@ void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cl
  	// ROS_INFO("Size: %d", inliers->indices.size());
 
 	// Continuity validation around here
+	if (inliers->indices.size() == 0)
+	// if (not continous or indices.size() == 0)
+	{
+		pcl::SampleConsensusModelPlane<pcl::PointXYZI>::Ptr ref_plane (new pcl::SampleConsensusModelPlane<pcl::PointXYZI>(region_cloud));
+		Eigen::Vector4f coefficients_v = Eigen::Vector4f(prev_coefficients->values[0], prev_coefficients->values[1], prev_coefficients->values[2], prev_coefficients->values[3]);
+		std::vector<int> inliers_v;
+		ref_plane->selectWithinDistance(coefficients_v, plane_ang_thres_, inliers_v);
+		
+		inliers->indices = inliers_v;
+		coefficients->values = prev_coefficients->values;
+	}
 
 	if (inliers->indices.size() == region_cloud->points.size())
 	{
@@ -468,7 +479,7 @@ void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cl
 		out_ground_points += *region_cloud;
 		// Update previous plane
 		prev_coefficients->values = coefficients->values;
-	} else if (inliers->indices.size() > 0) {
+	} else {
 		// This is general condition. Some are ground, some are not
 		// Extract the segmented points
 		pcl::ExtractIndices<pcl::PointXYZI> extract;
@@ -483,22 +494,6 @@ void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cl
 		*remaining_vertical += *tmp_vertical;
 		// Update previous plane
 		prev_coefficients->values = coefficients->values;
-	} else {
-		// indices size == 0
-		// This condition is when the plane cannot be estimated, use the plane from previous section instead
-	 	// ROS_INFO("Size: %d", inliers->indices.size());
-		seg.setInputCloud (region_cloud);
-	  seg.segment (*inliers, *prev_coefficients);
-		pcl::ExtractIndices<pcl::PointXYZI> extract;
-	  extract.setInputCloud (region_cloud);
-	  extract.setIndices (inliers);
-	  extract.setNegative (false);
-	  extract.filter(*tmp_ground);
-	  extract.setNegative (true);
-	  extract.filter(*tmp_vertical);
-		// Merge outputs
-		out_ground_points += *tmp_ground;
-		*remaining_vertical += *tmp_vertical;
 	}
 }
 
@@ -536,9 +531,9 @@ void CascasedGroundSeg::SectionPlaneSegment(int i, pcl::PointCloud<pcl::PointXYZ
 
 			// Plane segmentation using known coefficients
 			pcl::SampleConsensusModelPlane<pcl::PointXYZI>::Ptr ref_plane (new pcl::SampleConsensusModelPlane<pcl::PointXYZI>(region_cloud));
-			Eigen::Vector4f coefficients = Eigen::Vector4f(prev_coefficients->values[0], prev_coefficients->values[1], prev_coefficients->values[2], prev_coefficients->values[3]);
+			Eigen::Vector4f coefficients_v = Eigen::Vector4f(prev_coefficients->values[0], prev_coefficients->values[1], prev_coefficients->values[2], prev_coefficients->values[3]);
 			std::vector<int> inliers_v;
-			ref_plane->selectWithinDistance(coefficients, plane_ang_thres_, inliers_v);
+			ref_plane->selectWithinDistance(coefficients_v, plane_ang_thres_, inliers_v);
 
 			if (inliers_v.size() == 0)
 			{
