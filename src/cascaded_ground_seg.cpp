@@ -25,6 +25,8 @@
 #include <pcl/ModelCoefficients.h>
 #include <pcl/segmentation/sac_segmentation.h>
 
+#include <pcl/sample_consensus/sac_model_plane.h>
+
 
 class CascasedGroundSeg
 {
@@ -81,7 +83,7 @@ private:
 	void InitRegionIndex();
 	int GetSection(double r);
 	void FillRegionIndex(pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_ground_cloud);
-	void PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cloud, pcl::PointCloud<pcl::PointXYZI> &out_ground_points, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_vertical);
+	void PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cloud, pcl::PointCloud<pcl::PointXYZI> &out_ground_points, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_vertical, pcl::ModelCoefficients::Ptr &prev_coefficients);
 	void SectionPlaneSegment(int i, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_ground, pcl::PointCloud<pcl::PointXYZI> &out_ground_points, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_vertical);
 	void SegmentGround(const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg,
 				pcl::PointCloud<pcl::PointXYZI> &out_groundless_points,
@@ -437,7 +439,7 @@ void CascasedGroundSeg::FillRegionIndex(pcl::PointCloud<pcl::PointXYZI>::Ptr &re
 	}
 }
 
-void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cloud, pcl::PointCloud<pcl::PointXYZI> &out_ground_points, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_vertical)
+void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cloud, pcl::PointCloud<pcl::PointXYZI> &out_ground_points, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_vertical, pcl::ModelCoefficients::Ptr &prev_coefficients)
 {
 	// Temporary containers for plane segmentation results
 	pcl::PointCloud<pcl::PointXYZI>::Ptr tmp_ground (new pcl::PointCloud<pcl::PointXYZI>);
@@ -458,10 +460,14 @@ void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cl
 
  	// ROS_INFO("Size: %d", inliers->indices.size());
 
+	// Continuity validation around here
+
 	if (inliers->indices.size() == region_cloud->points.size())
 	{
 		// In this condition, every point is ground
 		out_ground_points += *region_cloud;
+		// Update previous plane
+		prev_coefficients->values = coefficients->values;
 	} else if (inliers->indices.size() > 0) {
 		// This is general condition. Some are ground, some are not
 		// Extract the segmented points
@@ -475,13 +481,34 @@ void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cl
 		// Merge outputs
 		out_ground_points += *tmp_ground;
 		*remaining_vertical += *tmp_vertical;
+		// Update previous plane
+		prev_coefficients->values = coefficients->values;
 	} else {
+		// indices size == 0
 		// This condition is when the plane cannot be estimated, use the plane from previous section instead
+	 	// ROS_INFO("Size: %d", inliers->indices.size());
+		seg.setInputCloud (region_cloud);
+	  seg.segment (*inliers, *prev_coefficients);
+		pcl::ExtractIndices<pcl::PointXYZI> extract;
+	  extract.setInputCloud (region_cloud);
+	  extract.setIndices (inliers);
+	  extract.setNegative (false);
+	  extract.filter(*tmp_ground);
+	  extract.setNegative (true);
+	  extract.filter(*tmp_vertical);
+		// Merge outputs
+		out_ground_points += *tmp_ground;
+		*remaining_vertical += *tmp_vertical;
 	}
 }
 
 void CascasedGroundSeg::SectionPlaneSegment(int i, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_ground, pcl::PointCloud<pcl::PointXYZI> &out_ground_points, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_vertical)
 {
+	// Coefficients object to store coeffs of a valid plane
+	pcl::ModelCoefficients::Ptr prev_coefficients (new pcl::ModelCoefficients);
+	prev_coefficients->values.resize(4);
+
+	// Loop through sections
 	for (int j = 0; j < n_section_; j++)
 	{
 		// Select points that belong to the current region
@@ -499,11 +526,42 @@ void CascasedGroundSeg::SectionPlaneSegment(int i, pcl::PointCloud<pcl::PointXYZ
 		// The cloud has to contain more than 3 points to be able to used for plane estimation
 		if (region_cloud->points.size() > 3)
 		{
-			PlaneSeg(region_cloud, out_ground_points, remaining_vertical);
-		} else {
+			PlaneSeg(region_cloud, out_ground_points, remaining_vertical, prev_coefficients);
+		} else if (region_cloud->points.size() > 0){
 			// segment using coefficients of the estimated plane from previous section
+
+			// Temporary containers for plane segmentation results
+			pcl::PointCloud<pcl::PointXYZI>::Ptr tmp_ground (new pcl::PointCloud<pcl::PointXYZI>);
+			pcl::PointCloud<pcl::PointXYZI>::Ptr tmp_vertical (new pcl::PointCloud<pcl::PointXYZI>);
+
+			// Plane segmentation using known coefficients
+			pcl::SampleConsensusModelPlane<pcl::PointXYZI>::Ptr ref_plane (new pcl::SampleConsensusModelPlane<pcl::PointXYZI>(region_cloud));
+			Eigen::Vector4f coefficients = Eigen::Vector4f(prev_coefficients->values[0], prev_coefficients->values[1], prev_coefficients->values[2], prev_coefficients->values[3]);
+			std::vector<int> inliers_v;
+			ref_plane->selectWithinDistance(coefficients, plane_ang_thres_, inliers_v);
+
+			if (inliers_v.size() == 0)
+			{
+				*remaining_vertical += *region_cloud;
+			} else if (inliers_v.size() == region_cloud->points.size()){
+				out_ground_points += *region_cloud;
+			} else {
+				ROS_INFO("Manual");
+			  pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+				inliers->indices = inliers_v;
+				std::cout << inliers_v.size() << '\n';
+				pcl::ExtractIndices<pcl::PointXYZI> extract;
+			  extract.setInputCloud (region_cloud);
+			  extract.setIndices (inliers);
+			  extract.setNegative (false);
+			  extract.filter(*tmp_ground);
+			  extract.setNegative (true);
+			  extract.filter(*tmp_vertical);
+				// Merge outputs
+				out_ground_points += *tmp_ground;
+				*remaining_vertical += *tmp_vertical;
+			}
 		}
-		// ROS_INFO("After one plane");
 	}
 }
 
