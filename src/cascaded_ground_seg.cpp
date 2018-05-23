@@ -62,7 +62,6 @@ private:
 	int 		vertical_res_;
 	int 		horizontal_res_;
 	double	radius_table_[64];
-	// cv::Mat 	index_map_;
 	int **index_map_;
 	std::vector<int> **region_index_;
 	std::vector<double> section_bounds_;
@@ -446,19 +445,6 @@ bool CascasedGroundSeg::isContinuous(int q, int s, pcl::ModelCoefficients::Ptr c
 	{
 		return true;
 	}
-	// // Normalize the plane coefficients
-	// double norm_1 = sqrt(prev->values[0]*prev->values[0] + prev->values[1]*prev->values[1] + prev->values[2]*prev->values[2]);
-	// prev->values[0] = prev->values[0]/norm_1;
-	// prev->values[1] = prev->values[1]/norm_1;
-	// prev->values[2] = prev->values[2]/norm_1;
-	// prev->values[3] = prev->values[3]/norm_1;
-  //
-	// // Normalize the plane coefficients
-	// double norm_2 = sqrt(curr->values[0]*curr->values[0] + curr->values[1]*curr->values[1] + curr->values[2]*curr->values[2]);
-	// curr->values[0] = curr->values[0]/norm_2;
-	// curr->values[1] = curr->values[1]/norm_2;
-	// curr->values[2] = curr->values[2]/norm_2;
-	// curr->values[3] = curr->values[3]/norm_2;
 
 	// Vertice (x, y)
 	double rad = section_bounds_[s];
@@ -501,14 +487,11 @@ void CascasedGroundSeg::PlaneSeg(int q, int s, pcl::PointCloud<pcl::PointXYZI>::
 	seg.setInputCloud (region_cloud);
   seg.segment (*inliers, *coefficients);
 
- 	// ROS_INFO("Size: %d", inliers->indices.size());
 
 	bool discontinuous = !isContinuous(q, s, coefficients, prev_coefficients);
-	// Continuity validation around here
+
 	if ((inliers->indices.size() == 0) || discontinuous)
-	// if ((inliers->indices.size() == 0))
 	{
-		ROS_INFO("Discontinuity!!");
 		pcl::SampleConsensusModelPlane<pcl::PointXYZI>::Ptr ref_plane (new pcl::SampleConsensusModelPlane<pcl::PointXYZI>(region_cloud));
 		Eigen::Vector4f coefficients_v = Eigen::Vector4f(prev_coefficients->values[0], prev_coefficients->values[1], prev_coefficients->values[2], prev_coefficients->values[3]);
 		std::vector<int> inliers_v;
@@ -566,7 +549,6 @@ void CascasedGroundSeg::SectionPlaneSegment(int i, pcl::PointCloud<pcl::PointXYZ
 	  extract_region_cloud.filter(*region_cloud);
 
 		// Segment ground points in a region
-		// ROS_INFO("Before one plane, size: %d", region_cloud->points.size());
 		// The cloud has to contain more than 3 points to be able to used for plane estimation
 		if (region_cloud->points.size() > 3)
 		{
