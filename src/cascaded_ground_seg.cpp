@@ -83,7 +83,8 @@ private:
 	void InitRegionIndex();
 	int GetSection(double r);
 	void FillRegionIndex(pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_ground_cloud);
-	void PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cloud, pcl::PointCloud<pcl::PointXYZI> &out_ground_points, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_vertical, pcl::ModelCoefficients::Ptr &prev_coefficients);
+	bool isContinuous(int q, int s, pcl::ModelCoefficients::Ptr curr, pcl::ModelCoefficients::Ptr prev);
+	void PlaneSeg(int q, int s, pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cloud, pcl::PointCloud<pcl::PointXYZI> &out_ground_points, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_vertical, pcl::ModelCoefficients::Ptr &prev_coefficients);
 	void SectionPlaneSegment(int i, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_ground, pcl::PointCloud<pcl::PointXYZI> &out_ground_points, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_vertical);
 	void SegmentGround(const pcl::PointCloud<velodyne_pointcloud::PointXYZIR>::ConstPtr &in_cloud_msg,
 				pcl::PointCloud<pcl::PointXYZI> &out_groundless_points,
@@ -105,7 +106,7 @@ CascasedGroundSeg::CascasedGroundSeg() : node_handle_("~")
 
 	node_handle_.param("sensor_model", sensor_model_, 64);
 	ROS_INFO("Sensor Model: %d", sensor_model_);
-	node_handle_.param("sensor_height", sensor_height_, 1.80);
+	node_handle_.param("sensor_height", sensor_height_, 2.00);
 	ROS_INFO("Sensor Height: %f", sensor_height_);
 	node_handle_.param("max_slope", max_slope_, 10.0);
 	ROS_INFO("Max Slope: %f", max_slope_);
@@ -119,9 +120,9 @@ CascasedGroundSeg::CascasedGroundSeg() : node_handle_("~")
 	ROS_INFO("Plane distance threshold: %f", plane_dis_thres_);
 	node_handle_.param("n_section", n_section_, 4);
 	ROS_INFO("Number of section: %d", n_section_);
-	node_handle_.param("plane_height_thres", plane_height_thres_, 10.0);
+	node_handle_.param("plane_height_thres", plane_height_thres_, 0.3);
 	ROS_INFO("Height difference threshold: %f", plane_height_thres_);
-	node_handle_.param("plane_ang_thres", plane_ang_thres_, 0.08);
+	node_handle_.param("plane_ang_thres", plane_ang_thres_, 5.0);
 	ROS_INFO("Angular differnce threshold: %f", plane_ang_thres_);
 
 	vertical_res_ = sensor_model_;
@@ -439,7 +440,49 @@ void CascasedGroundSeg::FillRegionIndex(pcl::PointCloud<pcl::PointXYZI>::Ptr &re
 	}
 }
 
-void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cloud, pcl::PointCloud<pcl::PointXYZI> &out_ground_points, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_vertical, pcl::ModelCoefficients::Ptr &prev_coefficients)
+bool CascasedGroundSeg::isContinuous(int q, int s, pcl::ModelCoefficients::Ptr curr, pcl::ModelCoefficients::Ptr prev)
+{
+	if (s == 0)
+	{
+		return true;
+	}
+	// // Normalize the plane coefficients
+	// double norm_1 = sqrt(prev->values[0]*prev->values[0] + prev->values[1]*prev->values[1] + prev->values[2]*prev->values[2]);
+	// prev->values[0] = prev->values[0]/norm_1;
+	// prev->values[1] = prev->values[1]/norm_1;
+	// prev->values[2] = prev->values[2]/norm_1;
+	// prev->values[3] = prev->values[3]/norm_1;
+  //
+	// // Normalize the plane coefficients
+	// double norm_2 = sqrt(curr->values[0]*curr->values[0] + curr->values[1]*curr->values[1] + curr->values[2]*curr->values[2]);
+	// curr->values[0] = curr->values[0]/norm_2;
+	// curr->values[1] = curr->values[1]/norm_2;
+	// curr->values[2] = curr->values[2]/norm_2;
+	// curr->values[3] = curr->values[3]/norm_2;
+
+	// Vertice (x, y)
+	double rad = section_bounds_[s];
+	double angle = 90.0 * q * M_PI / 180;
+	double x = rad*cos(angle);
+	double y = rad*sin(angle);
+
+	// Check height
+	bool con_height = false;
+	double height_gap = fabs((prev->values[0] - curr->values[0])*x + (prev->values[1] - curr->values[1])*y + (prev->values[3] - curr->values[3]));
+	con_height = height_gap <= plane_height_thres_;
+	ROS_INFO("Height gap: %f", height_gap);
+
+	// Check angle
+	bool con_ang = false;
+	double angle_gap = prev->values[0]*curr->values[0] + prev->values[1]*curr->values[1] + prev->values[2]*curr->values[2];
+	angle_gap = acos(angle_gap) * 180 / M_PI;
+	con_ang = angle_gap <= plane_ang_thres_;
+	ROS_INFO("Angle gap: %f", angle_gap);
+
+	return (con_height && con_ang);
+}
+
+void CascasedGroundSeg::PlaneSeg(int q, int s, pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cloud, pcl::PointCloud<pcl::PointXYZI> &out_ground_points, pcl::PointCloud<pcl::PointXYZI>::Ptr &remaining_vertical, pcl::ModelCoefficients::Ptr &prev_coefficients)
 {
 	// Temporary containers for plane segmentation results
 	pcl::PointCloud<pcl::PointXYZI>::Ptr tmp_ground (new pcl::PointCloud<pcl::PointXYZI>);
@@ -452,7 +495,7 @@ void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cl
   seg.setOptimizeCoefficients (true);
   seg.setModelType (pcl::SACMODEL_PLANE);
   seg.setMethodType (pcl::SAC_RANSAC);
-  seg.setMaxIterations (50);
+  seg.setMaxIterations (100);
   seg.setDistanceThreshold (plane_dis_thres_);
 	// Perform segmentation
 	seg.setInputCloud (region_cloud);
@@ -460,15 +503,17 @@ void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cl
 
  	// ROS_INFO("Size: %d", inliers->indices.size());
 
+	bool discontinuous = !isContinuous(q, s, coefficients, prev_coefficients);
 	// Continuity validation around here
-	if (inliers->indices.size() == 0)
-	// if (not continous or indices.size() == 0)
+	if ((inliers->indices.size() == 0) || discontinuous)
+	// if ((inliers->indices.size() == 0))
 	{
+		ROS_INFO("Discontinuity!!");
 		pcl::SampleConsensusModelPlane<pcl::PointXYZI>::Ptr ref_plane (new pcl::SampleConsensusModelPlane<pcl::PointXYZI>(region_cloud));
 		Eigen::Vector4f coefficients_v = Eigen::Vector4f(prev_coefficients->values[0], prev_coefficients->values[1], prev_coefficients->values[2], prev_coefficients->values[3]);
 		std::vector<int> inliers_v;
 		ref_plane->selectWithinDistance(coefficients_v, plane_ang_thres_, inliers_v);
-		
+
 		inliers->indices = inliers_v;
 		coefficients->values = prev_coefficients->values;
 	}
@@ -479,6 +524,10 @@ void CascasedGroundSeg::PlaneSeg(pcl::PointCloud<pcl::PointXYZI>::Ptr &region_cl
 		out_ground_points += *region_cloud;
 		// Update previous plane
 		prev_coefficients->values = coefficients->values;
+	} else if (inliers->indices.size() == 0) {
+		// Cannot fit the plane at all
+		*remaining_vertical += *region_cloud;
+		// Not update previous plane
 	} else {
 		// This is general condition. Some are ground, some are not
 		// Extract the segmented points
@@ -521,8 +570,9 @@ void CascasedGroundSeg::SectionPlaneSegment(int i, pcl::PointCloud<pcl::PointXYZ
 		// The cloud has to contain more than 3 points to be able to used for plane estimation
 		if (region_cloud->points.size() > 3)
 		{
-			PlaneSeg(region_cloud, out_ground_points, remaining_vertical, prev_coefficients);
-		} else if (region_cloud->points.size() > 0){
+			PlaneSeg(i, j, region_cloud, out_ground_points, remaining_vertical, prev_coefficients);
+		} else if (region_cloud->points.size() > 0) {
+			ROS_INFO("Manual");
 			// segment using coefficients of the estimated plane from previous section
 
 			// Temporary containers for plane segmentation results
@@ -541,10 +591,8 @@ void CascasedGroundSeg::SectionPlaneSegment(int i, pcl::PointCloud<pcl::PointXYZ
 			} else if (inliers_v.size() == region_cloud->points.size()){
 				out_ground_points += *region_cloud;
 			} else {
-				ROS_INFO("Manual");
 			  pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
 				inliers->indices = inliers_v;
-				std::cout << inliers_v.size() << '\n';
 				pcl::ExtractIndices<pcl::PointXYZI> extract;
 			  extract.setInputCloud (region_cloud);
 			  extract.setIndices (inliers);
