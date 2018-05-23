@@ -1,0 +1,37 @@
+<launch>
+
+        <arg name="point_topic" default="/velodyne_points" />
+        <arg name="no_ground_point_topic" default="/points_no_ground" />
+        <arg name="ground_point_topic" default="/points_ground" />
+
+        <arg name="sensor_model" default="64" />
+        <arg name="sensor_height" default="2.0" />
+        <arg name="max_slope" default="5.0" />
+        <arg name="vertical_thres" default="0.08" />
+
+        <arg name="remove_floor" default="true" />
+
+        <arg name="plane_dis_thres" default="0.3" />
+        <arg name="n_section" default="3" />
+        <arg name="plane_height_thres" default="2.0" />
+        <arg name="plane_ang_thres" default="10.0" />
+
+	<node pkg="cascaded_ground_seg" type="cascaded_ground_seg_node" name="cascaded_ground_seg">
+                <param name="point_topic" value="$(arg point_topic)" />
+                <param name="no_ground_point_topic" value="$(arg no_ground_point_topic)" />
+                <param name="ground_point_topic" value="$(arg ground_point_topic)" />
+
+                <param name="sensor_model" value="$(arg sensor_model)" />
+                <param name="sensor_height" value="$(arg sensor_height)" />
+                <param name="max_slope" value="$(arg max_slope)" />
+                <param name="vertical_thres" value="$(arg vertical_thres)" />
+
+                <param name="remove_floor" value="$(arg remove_floor)" />
+
+                <param name="plane_dis_thres" value="$(arg plane_dis_thres)" />
+                <param name="n_section" value="$(arg n_section)" />
+                <param name="plane_height_thres" value="$(arg plane_height_thres)" />
+                <param name="plane_ang_thres" value="$(arg plane_ang_thres)" />
+        </node>
+
+</launch>
