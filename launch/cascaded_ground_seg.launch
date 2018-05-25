@@ -11,8 +11,8 @@
 
         <arg name="remove_floor" default="true" />
 
-        <arg name="plane_dis_thres" default="0.3" />
-        <arg name="n_section" default="3" />
+        <arg name="plane_dis_thres" default="0.35" />
+        <arg name="n_section" default="4" />
         <arg name="plane_height_thres" default="2.0" />
         <arg name="plane_ang_thres" default="10.0" />
 
