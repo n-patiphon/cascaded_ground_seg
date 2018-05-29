@@ -495,7 +495,8 @@ void CascasedGroundSeg::PlaneSeg(int q, int s, pcl::PointCloud<pcl::PointXYZI>::
 		pcl::SampleConsensusModelPlane<pcl::PointXYZI>::Ptr ref_plane (new pcl::SampleConsensusModelPlane<pcl::PointXYZI>(region_cloud));
 		Eigen::Vector4f coefficients_v = Eigen::Vector4f(prev_coefficients->values[0], prev_coefficients->values[1], prev_coefficients->values[2], prev_coefficients->values[3]);
 		std::vector<int> inliers_v;
-		ref_plane->selectWithinDistance(coefficients_v, plane_ang_thres_, inliers_v);
+		// ref_plane->selectWithinDistance(coefficients_v, plane_ang_thres_, inliers_v);
+		ref_plane->selectWithinDistance(coefficients_v, plane_dis_thres_, inliers_v);
 
 		inliers->indices = inliers_v;
 		coefficients->values = prev_coefficients->values;
@@ -565,7 +566,8 @@ void CascasedGroundSeg::SectionPlaneSegment(int i, pcl::PointCloud<pcl::PointXYZ
 			pcl::SampleConsensusModelPlane<pcl::PointXYZI>::Ptr ref_plane (new pcl::SampleConsensusModelPlane<pcl::PointXYZI>(region_cloud));
 			Eigen::Vector4f coefficients_v = Eigen::Vector4f(prev_coefficients->values[0], prev_coefficients->values[1], prev_coefficients->values[2], prev_coefficients->values[3]);
 			std::vector<int> inliers_v;
-			ref_plane->selectWithinDistance(coefficients_v, plane_ang_thres_, inliers_v);
+			// ref_plane->selectWithinDistance(coefficients_v, plane_ang_thres_, inliers_v);
+			ref_plane->selectWithinDistance(coefficients_v, plane_dis_thres_, inliers_v);
 
 			if (inliers_v.size() == 0)
 			{
