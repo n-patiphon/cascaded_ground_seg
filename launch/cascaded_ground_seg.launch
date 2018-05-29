@@ -5,7 +5,7 @@
         <arg name="ground_point_topic" default="/points_ground" />
 
         <arg name="sensor_model" default="64" />
-        <arg name="sensor_height" default="2.0" />
+        <arg name="sensor_height" default="1.83" />
         <arg name="max_slope" default="5.0" />
         <arg name="vertical_thres" default="0.08" />
 
@@ -13,8 +13,8 @@
 
         <arg name="plane_dis_thres" default="0.35" />
         <arg name="n_section" default="4" />
-        <arg name="plane_height_thres" default="2.0" />
-        <arg name="plane_ang_thres" default="10.0" />
+        <arg name="plane_height_thres" default="5.0" />
+        <arg name="plane_ang_thres" default="16.0" />
 
 	<node pkg="cascaded_ground_seg" type="cascaded_ground_seg_node" name="cascaded_ground_seg">
                 <param name="point_topic" value="$(arg point_topic)" />
